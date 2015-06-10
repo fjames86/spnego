@@ -11,7 +11,8 @@ before authentication completes.
 Use the various generic functions from [glass](https://github.com/fjames86/glass).
 
 ```
-
+(glass:acquire-credentials :spnego "User@DOMAIN.COM")
+(glass:initialize-security-context *creds*)
 ```
 
 ## 3. Notes
