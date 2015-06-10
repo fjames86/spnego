@@ -1,0 +1,2 @@
+# spnego
+SPNEGO authentication
