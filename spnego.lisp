@@ -1,4 +1,5 @@
-
+;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
+;;;; This code is licensed under the MIT license.
 
                                                              
                                  
@@ -6,6 +7,9 @@
 ;; http://blogs.msdn.com/b/openspecification/archive/2011/06/24/authentication-101.aspx
 ;; http://tools.ietf.org/html/rfc4178
 
+;; basically this wraps NTLM and Kerberos, negotiating whether to use Kerberos (if possible)
+;; or falling back to NTLM otherwise. So it requires access to the underlying NTLM and Kerberos
+;; implementations.
 
 (defpackage #:spnego
   (:use #:cl))
@@ -13,7 +17,6 @@
 (in-package #:spnego)
 
 (defparameter *spnego-oid* '(1 3 6 1 5 5 2)) 
-;;(defparameter *spnego-oid* '(1 3 6 1 5 2 4 2)) ;; this is actually id-xkdcp-kippu
 
 (defun encode-initial-context-token (stream message)
   (declare (type stream stream)
@@ -189,29 +192,28 @@
 (defclass spnego-server-context (spnego-context)
   ())
 
-(defmethod glass:accept-security-context ((creds spnego-credentials) buffer &key context)
+(defmethod glass:accept-security-context ((context spnego-server-context) buffer &key)
   ;; if the context is provided then we are continuing a previously initialized context
-  (cond
-    (context 
-     (ecase (spnego-context-state context)
-       (:init (error "Context still in initial state"))
-       (:negotiate 
-        ;; we have already negotiated the supported authentication systems
-        ;; the buffer is expected to be a real kerberos token
-        (let ((tok (flexi-streams:with-input-from-sequence (s buffer)
-                     (decode-nego-token s))))
-          ;; tok should be a neg-token-resp
-          (declare (type neg-token-resp tok))
-          ;; assume it's a kerberos token and pass to cerberus
-          (let ((cxt (glass:accept-security-context (spnego-creds creds) 
-                                                    (neg-token-resp-token tok))))
-            (values (make-instance 'spnego-server-context 
-                                   :state :complete
-                                   :creds creds
-                                   :context cxt)
-                    nil))))                  
-       (:complete (error "Context completed"))))
-    (t 
+  (ecase (spnego-context-state context)
+    (:init (error "Context still in initial state"))
+    (:negotiate 
+     ;; we have already negotiated the supported authentication systems
+     ;; the buffer is expected to be a real kerberos token
+     (let ((tok (flexi-streams:with-input-from-sequence (s buffer)
+                  (decode-nego-token s))))
+       ;; tok should be a neg-token-resp
+       (declare (type neg-token-resp tok))
+       ;; assume it's a kerberos token and pass to cerberus
+       (let ((cxt (glass:accept-security-context (spnego-creds (spnego-context-creds context)) 
+                                                 (neg-token-resp-token tok))))
+         (values (make-instance 'spnego-server-context 
+                                :state :complete
+                                :creds (spnego-context-creds context)
+                                :context cxt)
+                 nil))))
+    (:complete (error "Context completed"))))
+
+(defmethod glass:accept-security-context ((creds spnego-credentials) buffer &key)
      (let ((msg (flexi-streams:with-input-from-sequence (s buffer)
                   (decode-initial-context-token s))))
        (let ((tok (flexi-streams:with-input-from-sequence (s msg)
@@ -219,11 +221,12 @@
          (values (make-instance 'spnego-server-context 
                                 :creds creds
                                 :state :negotiate)
-                 tok))))))
+                 tok))))
 
 
 (defmethod glass:context-principal-name ((context spnego-server-context) &key)
-  nil)
+  ;; just call the underlying implementation
+  (glass:context-principal-name (spnego-context-cxt context)))
 
 
 ;; (defmethod glass:get-mic ((context spnego-context) message &key)
