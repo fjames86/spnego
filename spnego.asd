@@ -4,7 +4,7 @@
 (asdf:defsystem :spnego
   :name "spnego"
   :author "Frank James <frank.a.james@gmail.com>"
-  :description "SPNEGO authentication library"
+  :description "Provides SPNEGO authentication system to the glass API."
   :license "MIT"
   :components
   ((:file "spnego"))
