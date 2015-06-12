@@ -246,68 +246,85 @@
                                             :mic nil))))))))
 
 
-;; (defclass spnego-server-context (spnego-context)
-;;   ())
+(defclass spnego-server-context (spnego-context)
+ ())
 
-;; (defmethod glass:accept-security-context ((creds spnego-credentials) buffer &key)
-;;   (let ((msg (flexi-streams:with-input-from-sequence (s buffer)
-;;                (decode-initial-context-token s))))
-;;     (let ((tok (flexi-streams:with-input-from-sequence (s msg)
-;;                  (decode-nego-token s))))
-;;       ;; ok, we've got the nego-token. this contains a list of mechanisms and an optimistic initial token
-;;       ;; if we support one of the mechansims then just try the token directly 
-;;       (let ((first (first (neg-token-init-mech-types tok))))
-;;         ;; if the first one is ntlm or kerberos then we can proceed immediately, otherwise we reject outright
-;;         (cond
-;;           ((and (cerberus::kerberos-oid-p first) 
-;;                 (cerberus::oid-eql (spnego-creds-oid creds) cerberus::*kerberos-oid*))
-;;            ;; the token is a kerberos token and the credentials are Kerberos credentials 
-;;            (multiple-value-bind (context buffer) (glass:accept-security-context (spnego-creds creds) 
-;;                                                                                 (neg-token-init-token tok))
-;;              (declare (ignore buffer))
-;;              (values (make-instance 'spnego-server-context 
-;;                                     :creds creds
-;;                                     :context context
-;;                                     :state :completed)
-;;                      nil)))
-;;           ((and (cerberus::oid-eql first *ntlm-oid*)
-;;                 (cerberus::oid-eql (spnego-creds-oid creds) *ntlm-oid*))
-;;            ;; is an ntlm token and we are using ntlm 
-;;            (multiple-value-bind (context buffer) (glass:accept-security-context (spnego-creds creds) 
-;;                                                                                 (neg-token-init-token tok))
-;;              (declare (ignore buffer))
-;;              (values (make-instance 'spnego-server-context 
-;;                                     :creds creds
-;;                                     :context context 
-;;                                     :state :completed)
-;;                      nil)))
-;;           (t 
-;;             (error 'glass:gss-error :major :bad-mech)))))))
+(defmethod glass:accept-security-context ((creds spnego-credentials) buffer &key)
+  (let ((msg (flexi-streams:with-input-from-sequence (s buffer)
+               (decode-initial-context-token s))))
+    (let ((tok (flexi-streams:with-input-from-sequence (s msg)
+                 (decode-nego-token s))))
+      (declare (type neg-token-init tok))
+      ;; ok, we've got the init neg-token. this contains a list of mechanisms and an optimistic initial token
+      ;; if we support one of the mechansims then just try the token directly 
+      (let ((first (first (neg-token-init-mech-types tok))))
+        ;; if the first one is ntlm or kerberos then we can proceed immediately, otherwise we reject outright
+        (cond
+          ((and (cerberus::kerberos-oid-p first) 
+                (cerberus::oid-eql (spnego-creds-oid creds) cerberus::*kerberos-oid*))
+           ;; the token is a kerberos token and the credentials are Kerberos credentials 
+           (multiple-value-bind (context buffer) 
+	       (glass:accept-security-context (spnego-creds creds) 
+					      (neg-token-init-token tok))
+             (declare (ignore buffer))
+	     ;; fixme: if mutual authentication is required then we send that pack to the client
+	     ;; otherwise we are done 
+             (values (make-instance 'spnego-server-context 
+                                    :creds creds
+                                    :context context
+                                    :state :completed)
+                     nil)))
+          ((and (cerberus::oid-eql first *ntlm-oid*)
+                (cerberus::oid-eql (spnego-creds-oid creds) *ntlm-oid*))
+           ;; is an ntlm token and we are using ntlm 
+           (multiple-value-bind (context ntlm-buffer) 
+	       (glass:accept-security-context (spnego-creds creds) 
+					      (neg-token-init-token tok))
+	     ;; the token MUST be a NEGOTIATE ntlm token. we return the CHALLENGE token back to the client
+             (values (make-instance 'spnego-server-context 
+                                    :creds creds
+                                    :context context 
+                                    :state :negotiate)
+                     (pack #'encode-nego-token
+			   (make-neg-token-resp :state :incomplete
+						:mech *ntlm-oid*
+						:token ntlm-buffer)))))
+          (t 
+            (error 'glass:gss-error :major :bad-mech)))))))
 
 ;; for generating mutual authentication responses
-;; (defmethod glass:accept-security-context ((context spnego-server-context) buffer &key)
-;;   ;; if the context is provided then we are continuing a previously initialized context
-;;   (ecase (spnego-context-state context)
-;;     (:init (error "Context still in initial state"))
-;;     (:negotiate 
-;;      ;; we have already negotiated the supported authentication systems
-;;      ;; the buffer is expected to be a real kerberos token
-;;      (let ((tok (flexi-streams:with-input-from-sequence (s buffer)
-;;                   (decode-nego-token s))))
-;;        ;; tok should be a neg-token-resp
-;;        (declare (type neg-token-resp tok))
-;;        ;; assume it's a kerberos token and pass to cerberus
-;;        (let ((cxt (glass:accept-security-context (spnego-creds (spnego-context-creds context)) 
-;;                                                  (neg-token-resp-token tok))))
-;;          (values (make-instance 'spnego-server-context 
-;;                                 :state :completed
-;;                                 :creds (spnego-context-creds context)
-;;                                 :context cxt)
-;;                  nil))))
-;;     (:completed (error "Context completed"))))
+(defmethod glass:accept-security-context ((context spnego-server-context) buffer &key)
+  ;; if the context is provided then we are continuing a previously initialized context
+  (ecase (spnego-context-state context)
+    (:init (error 'glass:gss-error :major :defective-token)) ;;"Context still in initial state"))
+    (:negotiate 
+     ;; we have already negotiated the supported authentication systems
+     ;; the buffer is expected to be a real kerberos token
+     (let ((tok (flexi-streams:with-input-from-sequence (s buffer)
+                  (decode-nego-token s))))       
+       ;; tok should be a neg-token-resp
+       (declare (type neg-token-resp tok))
 
-;; (defmethod glass:context-principal-name ((context spnego-server-context) &key)
-;;   ;; just call the underlying implementation
-;;   (glass:context-principal-name (spnego-context-cxt context)))
+       ;; the mech type MUST be NTLM, Kerberos doesn't need this stage
+       (let ((oid (spnego-creds-oid (spnego-context-creds context))))
+	 (unless (cerberus::oid-eql *ntlm-oid* oid)
+	   (error 'glass:gss-error :major :defective-token))
+	 (when (neg-token-resp-mech tok)
+	   (unless (cerberus::oid-eql (neg-token-resp-mech tok) *ntlm-oid*)
+	     (error 'glass:gss-error :major :defective-token))))
+
+       ;; It's an NTLM token, validate the AUTHENTICATE message 
+       (let ((cxt (glass:accept-security-context (spnego-context-cxt context)
+                                                 (neg-token-resp-token tok))))
+         (values (make-instance 'spnego-server-context 
+                                :state :completed
+                                :creds (spnego-context-creds context)
+                                :context cxt)
+                 nil))))
+    (:completed (error 'glass:gss-error :major :defective-token))))
+
+ (defmethod glass:context-principal-name ((context spnego-server-context) &key)
+   ;; just call the underlying implementation
+   (glass:context-principal-name (spnego-context-cxt context)))
 
 

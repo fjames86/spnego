@@ -25,7 +25,7 @@ The client calls are implemented and have been shown to work.
 ```
 
 ### 2.2 Server 
-Not yet implemented, don't call these yet. When ready should be something like:
+The equivalent to the client calls, but with ACCEPT-SECURITY-CONTEXT.
 
 ```
 ;; get a credential handle
@@ -38,11 +38,8 @@ Not yet implemented, don't call these yet. When ready should be something like:
 (glass:accept-security-context context buffer)
 ```
 
-
 ## 3. Notes
-
-* The underlying NTLM and Kerberos implementations are [ntlm](https://github.com/fjames86/ntlm) and [cerberus](https://github.com/fjames86/cerberus).
-* Only the client calls have been implemented, i.e. only methods for INITIALIZE-SECURITY-CONTEXT. 
+The underlying NTLM and Kerberos implementations are [ntlm](https://github.com/fjames86/ntlm) and [cerberus](https://github.com/fjames86/cerberus).
 
 ## 4. License
 Licensed under the terms of the MIT license.
