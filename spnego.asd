@@ -6,6 +6,7 @@
   :author "Frank James <frank.a.james@gmail.com>"
   :description "Provides SPNEGO authentication system to the glass API."
   :license "MIT"
+  :version "1.0.0"
   :components
   ((:file "spnego"))
   :depends-on (:glass :cerberus :ntlm))
