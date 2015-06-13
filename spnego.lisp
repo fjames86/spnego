@@ -323,8 +323,26 @@
                  nil))))
     (:completed (error 'glass:gss-error :major :defective-token))))
 
- (defmethod glass:context-principal-name ((context spnego-server-context) &key)
-   ;; just call the underlying implementation
-   (glass:context-principal-name (spnego-context-cxt context)))
+(defmethod glass:context-principal-name ((context spnego-server-context) &key)
+  ;; just call the underlying implementation
+  (glass:context-principal-name (spnego-context-cxt context)))
+
+
+;; ---------------------------------------
+
+;; Just delegate these functions to the underlying systems
+;; TODO: is that the correct thing to do?
+
+(defmethod glass:get-mic ((context spnego-context) message &key)
+  (glass:get-mic (spnego-context-cxt context) message))
+
+(defmethod glass:verify-mic ((context spnego-context) message token &key)
+  (glass:verify-mic (spnego-context-cxt context) message token))
+
+(defmethod glass:wrap ((context spnego-context) message &key)
+  (glass:wrap (spnego-context-cxt context) message))
+
+(defmethod glass:unwrap ((context spnego-context) message &key)
+  (glass:unwrap (spnego-context-cxt context) message))
 
 
