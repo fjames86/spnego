@@ -183,7 +183,7 @@
 (defmethod glass:initialize-security-context ((creds spnego-credentials) &key)
   ;; This is an initial negotiation request. Generate and pack an init token, 
   ;; wrapped with the spnego oid
-  (multiple-value-bind (context token-buffer) (glass:initialize-security-context (spnego-creds creds))
+  (multiple-value-bind (context token-buffer continue-needed) (glass:initialize-security-context (spnego-creds creds))
     (let ((buffer (pack #'encode-initial-context-token
                         (pack #'encode-nego-token 
                               (make-neg-token-init :mech-types (list (spnego-creds-oid creds))
@@ -193,7 +193,8 @@
                              :creds creds
                              :state :negotiate
                              :context context)
-              buffer))))
+              buffer
+	      continue-needed))))
 
 
 (defmethod glass:initialize-security-context ((cxt spnego-client-context) &key buffer)
@@ -230,7 +231,8 @@
                  (pack #'encode-nego-token 
                        (make-neg-token-resp :state :completed
                                             :mech (spnego-creds-oid (spnego-context-creds cxt))
-                                            :token resp-buff)))))
+                                            :token resp-buff))
+		 nil)))
       (t 
        ;; Kerberos, just get the ticket and try again
        (multiple-value-bind (krb-context resp-buff) 
@@ -243,7 +245,8 @@
                        (make-neg-token-resp :state :incomplete
                                             :mech (spnego-creds-oid (spnego-context-creds cxt))
                                             :token resp-buff
-                                            :mic nil))))))))
+                                            :mic nil))
+		 nil))))))
 
 
 (defclass spnego-server-context (spnego-context)
@@ -273,7 +276,8 @@
                                     :creds creds
                                     :context context
                                     :state :completed)
-                     nil)))
+                     nil
+		     nil)))
           ((and (cerberus::oid-eql first *ntlm-oid*)
                 (cerberus::oid-eql (spnego-creds-oid creds) *ntlm-oid*))
            ;; is an ntlm token and we are using ntlm 
@@ -288,7 +292,8 @@
                      (pack #'encode-nego-token
 			   (make-neg-token-resp :state :incomplete
 						:mech *ntlm-oid*
-						:token ntlm-buffer)))))
+						:token ntlm-buffer))
+		     nil)))
           (t 
             (error 'glass:gss-error :major :bad-mech)))))))
 
@@ -320,7 +325,8 @@
                                 :state :completed
                                 :creds (spnego-context-creds context)
                                 :context cxt)
-                 nil))))
+                 nil
+		 nil))))
     (:completed (error 'glass:gss-error :major :defective-token))))
 
 (defmethod glass:context-principal-name ((context spnego-server-context) &key)
