@@ -294,7 +294,28 @@
 						:mech *ntlm-oid*
 						:token ntlm-buffer))
 		     nil)))
-          (t 
+          ((and (cerberus::oid-eql (spnego-creds-oid creds) cerberus::*kerberos-oid*)
+                (member-if #'cerberus::kerberos-oid-p (neg-token-init-mech-types tok)))
+           ;; we support kerberos, kerberos is listed as a valid mech although it's not the first mech
+           ;; reply saying to try again with kerberos
+           (values creds 
+                   (pack #'encode-nego-token
+                         (make-neg-token-resp :state :incomplete
+                                              :mech cerberus::*kerberos-oid*))
+                   nil))
+          ((and (cerberus::oid-eql (spnego-creds-oid creds) *ntlm-oid*)
+                (member-if (lambda (oid) (cerberus::oid-eql oid *ntlm-oid*))
+                           (neg-token-init-mech-types tok)))
+           ;; we support NTLM, NTLM is listed as a valid mech although it's not the first mech
+           ;; reply saying to try again with NTLM
+           (values creds
+                   (pack #'encode-nego-token
+                         (make-neg-token-resp :state :incomplete
+                                              :mech *ntlm-oid*))
+                   nil))
+          (t
+           ;; can't handle this, just error
+           (break)
             (error 'glass:gss-error :major :bad-mech)))))))
 
 ;; for generating mutual authentication responses

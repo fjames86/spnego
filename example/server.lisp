@@ -17,6 +17,7 @@
    (cred :initform (glass:acquire-credentials :spnego nil) :reader acceptor-creds))
   (:default-initargs :address nil))
 
+;; should make this an around method to dispatch to the real acceptor method 
 (defmethod hunchentoot:acceptor-dispatch-request ((acc nego-acceptor) req)
   ;; get the authorization header
   (flet ((auth-failed () 
@@ -30,7 +31,9 @@
 	(let ((buffer (cl-base64:base64-string-to-usb8-array (elt matches 0))))
 	  (multiple-value-bind (context buffer continue-needed)
 	      	  (handler-case (glass:accept-security-context (acceptor-creds acc) buffer)
-		    (error () (auth-failed)))
+		    (error (e) 
+              (hunchentoot:log-message* :error "~A" e)
+              (auth-failed)))
 	    (declare (ignore context))
 	    (cond
 	      (continue-needed 
