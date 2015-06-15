@@ -2,7 +2,6 @@
 ;;;; This code is licensed under the MIT license.
 
 ;;; This shows how you might write an HTTP server that does SPEGNO authentication.
-;;; Might not actually work yet.
 
 
 
@@ -20,11 +19,14 @@
 ;; should make this an around method to dispatch to the real acceptor method 
 (defmethod hunchentoot:acceptor-dispatch-request ((acc nego-acceptor) req)
   ;; get the authorization header
+  (hunchentoot:log-message* :info "Headers: ~S" (hunchentoot:headers-in*))
   (flet ((auth-failed () 
 	   (setf (hunchentoot:return-code*) hunchentoot:+http-authorization-required+)
 	   (return-from hunchentoot:acceptor-dispatch-request)))
     (let ((header (cdr (assoc :authorization (hunchentoot:headers-in*)))))
-      (unless header (auth-failed))
+      (unless header 
+        (hunchentoot:log-message* :error "No authorization header")
+        (auth-failed))
       ;; get the negotiate base64 value
       (let ((matches (nth-value 1 (cl-ppcre:scan-to-strings "Negotiate ([\\w=\\+/]+)" header))))
 	(unless matches (auth-failed))

@@ -302,7 +302,7 @@
                    (pack #'encode-nego-token
                          (make-neg-token-resp :state :incomplete
                                               :mech cerberus::*kerberos-oid*))
-                   nil))
+                   t))
           ((and (cerberus::oid-eql (spnego-creds-oid creds) *ntlm-oid*)
                 (member-if (lambda (oid) (cerberus::oid-eql oid *ntlm-oid*))
                            (neg-token-init-mech-types tok)))
@@ -312,7 +312,7 @@
                    (pack #'encode-nego-token
                          (make-neg-token-resp :state :incomplete
                                               :mech *ntlm-oid*))
-                   nil))
+                   t))
           (t
            ;; can't handle this, just error
            (break)

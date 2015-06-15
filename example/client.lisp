@@ -6,10 +6,10 @@
 ;;; You need drakma and cl-base64 systems.
 ;;; Try pointing the client at the HTTP server provided by server.c. 
 
-(defpackage #:spnego.example
+(defpackage #:spnego.example.client
   (:use #:cl))
 
-(in-package #:spnego.example)
+(in-package #:spnego.example.client)
 
 ;; before running this you must first set things up by calling either
 ;; (cerberus:logon-user "username" "password" "domain")

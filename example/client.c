@@ -1,6 +1,8 @@
 
-/** this is a simple client which uses Negotiate (SPNEGO) authentication. It can be used to examine 
- *  the generated headers/buffers etc.
+/**
+ * This defines an HTTP client which uses SPNEGO (Negotiate) authentication.
+ * Point it at the HTTP server (defined in server.lisp).
+ * 
  */
 
 #include <WinSock2.h>
@@ -10,8 +12,8 @@
 #include <winhttp.h>
 #include <Ntdsapi.h>
 
-#define MY_USERNAME "username"
-#define MY_PASSWORD "password"
+#define MY_USERNAME "frank"
+#define MY_PASSWORD "james"
 #define USE_BASIC_AUTH 0
 #define USE_NTLM_AUTH 0
 #define USE_KRB_AUTH 1
@@ -40,6 +42,8 @@ static void send_http_request( HANDLE hsession, char *url ) {
 	wchar_t wuser[256], wpass[256];
 	BOOL use_ssl = FALSE;
 	char *buff;
+	char buffer[1024];
+	DWORD nbytes;
 	//static wchar_t *reqtypes[] = { L"text/xml", NULL };
 	//static wchar_t *reqheaders = L"Content-Type: text/xml\r\n";
 	static wchar_t *http_method[] = { L"GET", L"POST", L"PUT", L"DELETE" };
@@ -71,7 +75,7 @@ static void send_http_request( HANDLE hsession, char *url ) {
 		uc.nPort = (use_ssl ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
 	}
 
-	// FIXME: we should really only create one of these per client
+	// FIXME: we should really only create one of these per client, i.e. in jrc_client_init
 	// WinHttpConnect needs the host name in wide char format
 	hconn = WinHttpConnect( hsession, hostname, uc.nPort, 0 );
 
@@ -80,7 +84,10 @@ static void send_http_request( HANDLE hsession, char *url ) {
 								urlpath, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, //reqtypes
 								d );
 
+	// clear out the header buffer (FIXME: possible buffer overflow - use sprintf_s instead)
 	wcscpy( wbuff, L"" );
+	// add the content-type header to say it's json
+	// FIXME: also add "; charset=UTF-8" ? this is sometimes needed
 	wcscat( wbuff, L"Content-Type: application/json");
 
 	res = WinHttpAddRequestHeaders( hreq, wbuff, -1, WINHTTP_ADDREQ_FLAG_ADD|WINHTTP_ADDREQ_FLAG_REPLACE );
@@ -140,14 +147,53 @@ static void send_http_request( HANDLE hsession, char *url ) {
 		res = WinHttpQueryHeaders( hreq, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, wbuff, &d, WINHTTP_NO_HEADER_INDEX );
 		if( res ) wprintf( L"headers: %s\n", wbuff );
 
+		d = sizeof(wbuff);		
+		memset( wbuff, 0, sizeof(wbuff) );
+		res = WinHttpQueryHeaders( hreq, WINHTTP_QUERY_AUTHENTICATION_INFO, WINHTTP_HEADER_NAME_BY_INDEX, wbuff, &d, WINHTTP_NO_HEADER_INDEX );
+		if( res ) wprintf( L"authorization: %s\n", wbuff );
+		else {
+			res = GetLastError();
+			printf( "Failed to get auth data: %x (%d)\n", res, res );
+		}
+
 		res = WinHttpQueryAuthSchemes( hreq, &supported, &first, &target );
+		if( !res ) {
+			res = GetLastError();
+			switch( res ) {
+			case ERROR_WINHTTP_INCORRECT_HANDLE_TYPE:
+				printf( "Incorrect handle\n" );
+				break;
+			case ERROR_WINHTTP_INTERNAL_ERROR:
+				printf( "Internal error\n" );
+				break;
+			case ERROR_NOT_ENOUGH_MEMORY:
+				printf( "Not enough memory\n" );
+				break;
+			default:
+				printf( "Error %x (%d)\n", res, res );
+			};
+		}
+
 		res = WinHttpSetCredentials( hreq, WINHTTP_AUTH_TARGET_SERVER, WINHTTP_AUTH_SCHEME_NEGOTIATE, NULL, NULL, NULL );
 		res = WinHttpSendRequest( hreq, 
 							WINHTTP_NO_ADDITIONAL_HEADERS, 0, 
 							"hello", 5,
 							5, 0 );
+		res = WinHttpReceiveResponse( hreq, NULL );
+		d = sizeof(n);
+		res = WinHttpQueryHeaders( hreq, WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &n, &d, WINHTTP_NO_HEADER_INDEX );
 
 		goto done;
+	} else {
+		// authenticdated
+		memset( buffer, 0, sizeof(buffer) );
+		res = WinHttpReadData( hreq, buffer, sizeof(buffer), &nbytes );
+		if( !res ) {
+			res = GetLastError();
+			printf( "Failed to read data: %x (%d)\n", res, res );
+		} else {
+			printf( "Data:\n%s\n", buffer );
+		}
 	}
 
 done:
@@ -162,7 +208,9 @@ int main( int argc, char **argv ) {
 	DWORD count, res;
 	char **buffer;
 	
-   
+	
+
+
 	dowork();
 	return 0;
 }
